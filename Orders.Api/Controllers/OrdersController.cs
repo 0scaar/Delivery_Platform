@@ -3,7 +3,9 @@ using Microsoft.EntityFrameworkCore;
 using Orders.Api.Contracts.Requests;
 using Orders.Api.Contracts.Responses;
 using Orders.Api.Domain;
+using Orders.Api.Events;
 using Orders.Api.Infrastructure;
+using Orders.Api.Messaging;
 
 namespace Orders.Api.Controllers;
 
@@ -12,10 +14,17 @@ namespace Orders.Api.Controllers;
 public class OrdersController : ControllerBase
 {
     private readonly OrdersDbContext _context;
-
-    public OrdersController(OrdersDbContext context)
+    private readonly IEventPublisher _eventPublisher;
+    private readonly string _exchange;
+    
+    public OrdersController(
+        OrdersDbContext context,
+        IEventPublisher eventPublisher,
+        IConfiguration configuration)
     {
         _context = context;
+        _eventPublisher = eventPublisher;
+        _exchange = configuration.GetValue<string>("RabbitMQ:Exchange") ?? "orders.exchange";
     }
 
     // GET: api/v1/orders
@@ -59,6 +68,15 @@ public class OrdersController : ControllerBase
 
         _context.Orders.Add(order);
         await _context.SaveChangesAsync();
+        
+        // Publicar evento OrderCreated
+        var @event = new OrderCreatedEvent(
+            order.Id,
+            order.CustomerId,
+            order.TotalAmount,
+            order.CreatedAt);
+
+        await _eventPublisher.PublishAsync(_exchange, "order.created", @event);
 
         return CreatedAtAction(nameof(GetById), new { id = order.Id }, MapToResponse(order));
     }
@@ -73,6 +91,15 @@ public class OrdersController : ControllerBase
 
         order.Confirm();
         await _context.SaveChangesAsync();
+        
+        // Publicar evento OrderConfirmed
+        var @event = new OrderConfirmedEvent(
+            order.Id,
+            order.CustomerId,
+            order.TotalAmount,
+            DateTime.UtcNow);
+
+        await _eventPublisher.PublishAsync(_exchange, "order.confirmed", @event);
 
         return NoContent();
     }

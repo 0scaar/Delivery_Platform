@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Orders.Api.Infrastructure;
+using Orders.Api.Messaging;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -15,6 +16,9 @@ builder.Services.AddDbContext<OrdersDbContext>(options =>
 {
     options.UseNpgsql(connectionString);
 });
+
+// RabbitMQ publisher
+builder.Services.AddSingleton<IEventPublisher, RabbitMqEventPublisher>();
 
 var app = builder.Build();
 
